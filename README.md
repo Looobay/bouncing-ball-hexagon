@@ -8,11 +8,10 @@
 
 This repository presents a challenge for Large Language Models (LLMs) to generate Python code that simulates a ball bouncing inside a spinning hexagon. This task tests an LLM's ability to:
 
-Implement realistic physics with gravity and friction effects
-Create accurate collision detection with rotating geometric boundaries
-Develop smooth animation and rendering systems
-Generate clean, maintainable code with customizable parameters
-The challenge evaluates an LLM's understanding of physics, mathematics, and programming concepts in a visually engaging application.
+- Implement realistic physics with gravity and friction effects
+- Create accurate collision detection with rotating geometric boundaries
+- Develop smooth animation and rendering systems
+- The challenge evaluates an LLM's understanding of physics, mathematics, and programming concepts in a visually engaging application.
 
 ## 🤖 LLM Performance Evaluation
 
