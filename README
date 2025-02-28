@@ -1,6 +1,8 @@
 # Bouncing Ball in a Hexagon - LLM Coding Challenge
 
 <div align="center"> A coding challenge to evaluate the capabilities of Large Language Models </div>
+<br/>
+<div align="center" style="font-weight: bold;"> I am NOT the original creator of this type of challenge! </div>
 
 ## 📝 Description
 
@@ -42,7 +44,7 @@ write a Python program that shows a ball bouncing inside a spinning hexagon. The
 
 # Clone the repository
 ```sh
-git clone https://github.com/Looobay/bouncing-ball-hexagon.git
+git clone https://github.com/looobay/bouncing-ball-hexagon.git
 ```
 
 # Navigate to the project directory
