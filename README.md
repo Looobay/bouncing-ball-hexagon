@@ -31,6 +31,7 @@ Model	Status	Notes
 | Gemini 2.0 Flash Lite | ✅
 | Grok 3 (and thinking) | ❌
 | Grok 2 | ❌
+| Grok Beta | ❌
 | Mistral 7B (Le Chat) | ❌
 | Qwen 2.5 32B | ❌
 
