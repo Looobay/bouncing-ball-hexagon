@@ -20,19 +20,28 @@ This simulation has been tested with various LLM models to evaluate their coding
 Model	Status	Notes
 | Model | Status
 |-----------|-----------
+| ChatGPT-4.1-mini  | ✅
+| ChatGPT-4.1  | ❌ 
+| ChatGPT-4.1-nano  | ✅
 | ChatGPT-4o  | ✅ 
 | ChatGPT-4o mini | ❌
-| ChatGPT-o3 (all of them)  | ✅ 
+| ChatGPT-o3 (mini)  | ✅ 
+| ChatGPT-o4 (mini)  | ✅
+| ChatGPT-o4-mini (low)  | ❌ 
 | Claude 3.5 Sonnet | ✅
-| Claude 3.7 Sonnet (all of them) | ✅ 
+| Claude 3.7 Sonnet (every efforts) | ✅ 
 | Deepseek R1 (distilled include)  | ❌ 
 | Deepseek V3 | ❌
 | Gemini 2.0 Flash  | ❌ 
 | Gemini 2.0 Flash Lite | ✅
+| Gemini 2.5 Flash | ❌
+| Gemini 2.5 Pro | ❌
+| Grok 3 mini (every efforts) | ✅
 | Grok 3 (and thinking) | ❌
 | Grok 2 | ❌
 | Grok Beta | ❌
 | Mistral 7B (Le Chat) | ❌
+| Qwen qwq 32B (no clear answer + wrong typo) | ❌
 | Qwen 2.5 32B | ❌
 
 ## ✨ Challenge Requirements

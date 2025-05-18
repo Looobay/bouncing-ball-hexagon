@@ -2,154 +2,147 @@ import pygame
 import math
 import sys
 
-# Initialize pygame
+# Initialize Pygame
 pygame.init()
 
 # Screen dimensions
 WIDTH, HEIGHT = 800, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("ChatGPT o3 mini (low) (28/02/2025)")
+pygame.display.set_caption("Bouncing Ball in a Spinning Hexagon")
 
 # Colors
+BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
-BLACK = (  0,   0,   0)
-RED   = (255,   0,   0)
-BLUE  = (  0,   0, 255)
+BALL_COLOR = (255, 100, 100)
+HEXAGON_COLOR = (100, 255, 100)
 
-# Physics constants
-GRAVITY = 0.5       # gravitational acceleration
-FRICTION = 0.99     # friction factor applied after collisions
-
-# Ball settings
-ball_radius = 10
-ball_pos = [WIDTH / 2, HEIGHT / 2]
-ball_vel = [4, -2]
-
-# Hexagon settings
-hex_radius = 200  # distance from center to vertex
-hex_center = (WIDTH/2, HEIGHT/2)
-hex_angle = 0  # current rotation angle (in radians)
-hex_spin_speed = 0.01  # radians per frame
-
-clock = pygame.time.Clock()
+# Time step
 FPS = 60
+clock = pygame.time.Clock()
 
-def get_hexagon_points(center, radius, angle):
-    """Return list of 6 points for a hexagon centered at center,
-    with a given radius and rotated by angle."""
-    cx, cy = center
-    points = []
+# Ball properties
+ball_radius = 10
+ball_pos = pygame.Vector2(WIDTH // 2, HEIGHT // 2)
+ball_vel = pygame.Vector2(200, -50)  # initial velocity
+gravity = pygame.Vector2(0, 400)     # pixels per second^2
+# A simple friction coefficient, applied when ball touches the wall
+friction = 0.8
+
+# Hexagon properties
+hex_center = pygame.Vector2(WIDTH // 2, HEIGHT // 2)
+hex_radius = 200  # distance from center to the vertices
+hex_angle = 0     # start rotation angle
+hex_rotation_speed = 0.5  # radians per second
+
+def get_hexagon_vertices(center, radius, angle):
+    """Return list of vertices for a hexagon rotated by angle (in radians)."""
+    vertices = []
     for i in range(6):
-        theta = math.pi/6 + i * math.pi / 3 + angle  # start rotated by 30° for flat top
-        x = cx + radius * math.cos(theta)
-        y = cy + radius * math.sin(theta)
-        points.append((x, y))
-    return points
+        theta = angle + i * (2 * math.pi / 6)
+        x = center.x + radius * math.cos(theta)
+        y = center.y + radius * math.sin(theta)
+        vertices.append(pygame.Vector2(x, y))
+    return vertices
 
-def point_line_distance(p, a, b):
-    """Return the distance from point p to the line segment a-b and also
-    the closest point on the line."""
-    # Compute the projection of point p onto line ab
-    ax, ay = a
-    bx, by = b
-    px, py = p
-    # Vector from a -> p and a -> b
-    abx, aby = bx - ax, by - ay
-    apx, apy = px - ax, py - ay
-    ab_length2 = abx * abx + aby * aby
+def point_line_distance(point, line_start, line_end):
+    """
+    Compute the shortest distance between a point and a line segment.
+    Returns (distance, closest point on segment)
+    """
+    line = line_end - line_start
+    if line.length_squared() == 0:
+        return (point.distance_to(line_start), line_start)
+    # projection factor of point onto line
+    t = max(0, min(1, (point - line_start).dot(line) / line.length_squared()))
+    closest = line_start + t * line
+    return (point.distance_to(closest), closest)
 
-    # Avoid division by zero if a and b are the same
-    if ab_length2 == 0:
-        return math.hypot(px - ax, py - ay), a
+def reflect_vector(velocity, normal):
+    """
+    Reflect velocity vector based on collision with a surface defined by normal.
+    The reflection formula is: v' = v - 2*(v dot n)*n
+    """
+    return velocity - 2 * velocity.dot(normal) * normal
 
-    # projection fraction
-    t = (apx * abx + apy * aby) / ab_length2
+def main():
+    global ball_pos, ball_vel, hex_angle
 
-    # Clamp t to [0,1] to find the closest point on the segment
-    t = max(0, min(1, t))
-    closest = (ax + t * abx, ay + t * aby)
-    dist = math.hypot(px - closest[0], py - closest[1])
-    return dist, closest
+    dt = 1 / FPS  # Time step (in seconds)
 
-def reflect_vector(v, normal):
-    """Reflect the vector v from a surface with the given normal.
-    v and normal are 2-tuples"""
-    # normalize normal
-    nx, ny = normal
-    mag = math.hypot(nx, ny)
-    if mag == 0:
-        return v
-    nx /= mag
-    ny /= mag
-    # Dot product
-    dot = v[0] * nx + v[1] * ny
-    # reflection: v - 2*(v dot n)*n
-    rx = v[0] - 2 * dot * nx
-    ry = v[1] - 2 * dot * ny
-    return [rx, ry]
+    running = True
 
-running = True
-while running:
-    clock.tick(FPS)
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+    while running:
+        clock.tick(FPS)
+        # ----- Event Handling -----
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
 
-    # Update hexagon rotation angle
-    hex_angle += hex_spin_speed
-    hex_points = get_hexagon_points(hex_center, hex_radius, hex_angle)
+        # ----- Physics Updates -----
 
-    # Update ball physics: apply gravity
-    ball_vel[1] += GRAVITY
-    ball_pos[0] += ball_vel[0]
-    ball_pos[1] += ball_vel[1]
+        # Update rotation of hexagon
+        hex_angle += hex_rotation_speed * dt
+        vertices = get_hexagon_vertices(hex_center, hex_radius, hex_angle)
 
-    # Collision detection with hexagon walls
-    for i in range(len(hex_points)):
-        a = hex_points[i]
-        b = hex_points[(i + 1) % len(hex_points)]
-        dist, closest = point_line_distance(ball_pos, a, b)
-        if dist <= ball_radius:
-            # Determine the wall normal (pointing outward)
-            # For a convex polygon, the normal can be computed as a perpendicular
-            # to the edge. We'll choose the one pointing from the wall towards the ball.
-            edge_vec = (b[0] - a[0], b[1] - a[1])
-            normal = (-edge_vec[1], edge_vec[0])
-            # Check if the normal is indeed pointing toward the ball.
-            # Compute vector from closest point to ball:
-            cp_to_ball = (ball_pos[0] - closest[0], ball_pos[1] - closest[1])
-            # If dot product is negative, flip the normal
-            dot = normal[0]*cp_to_ball[0] + normal[1]*cp_to_ball[1]
-            if dot < 0:
-                normal = (-normal[0], -normal[1])
+        # Apply gravity to ball velocity
+        ball_vel += gravity * dt
 
-            # Reflect ball velocity
-            ball_vel = reflect_vector(ball_vel, normal)
-            # Apply friction multiplier
-            ball_vel[0] *= FRICTION
-            ball_vel[1] *= FRICTION
-            # Move ball out of collision (simple correction)
-            overlap = ball_radius - dist + 1
-            ball_pos[0] += normal[0] / math.hypot(*normal) * overlap
-            ball_pos[1] += normal[1] / math.hypot(*normal) * overlap
+        # Update ball position
+        ball_pos += ball_vel * dt
 
-    # Optional: Bounce off screen boundaries in case the ball escapes the hexagon.
-    if ball_pos[0] - ball_radius < 0 or ball_pos[0] + ball_radius > WIDTH:
-        ball_vel[0] = -ball_vel[0] * FRICTION
-    if ball_pos[1] - ball_radius < 0 or ball_pos[1] + ball_radius > HEIGHT:
-        ball_vel[1] = -ball_vel[1] * FRICTION
+        # Check collision with hexagon walls
+        # Iterate over the edges. If the distance from the ball to an edge is less than 
+        # the ball's radius, and the ball is moving toward the line; we reflect the velocity.
+        for i in range(len(vertices)):
+            v_start = vertices[i]
+            v_end = vertices[(i + 1) % len(vertices)]
+            distance, closest = point_line_distance(ball_pos, v_start, v_end)
+            if distance < ball_radius:
+                # Determine edge vector and normal
+                edge_vec = v_end - v_start
+                # Normalize perpendicular (rotate edge vector 90 degrees)
+                normal = pygame.Vector2(-edge_vec.y, edge_vec.x).normalize()
+                # Ensure the ball is on the correct side of the line (i.e. heading into the wall)
+                if (ball_vel.dot(normal) < 0):
+                    # Reflect the ball velocity
+                    ball_vel = reflect_vector(ball_vel, normal)
+                    # Apply friction (damp the velocity a bit)
+                    ball_vel *= friction
 
-    # Clear screen
-    screen.fill(BLACK)
+                    # Push the ball out of collision slightly
+                    overlap = ball_radius - distance
+                    ball_pos += normal * overlap
 
-    # Draw hexagon
-    pygame.draw.polygon(screen, WHITE, hex_points, width=2)
+        # Also check for collisions with the window edges so that the ball doesn't fly off-screen.
+        # Left/Right wall
+        if ball_pos.x - ball_radius < 0:
+            ball_pos.x = ball_radius
+            ball_vel.x = -ball_vel.x * friction
+        if ball_pos.x + ball_radius > WIDTH:
+            ball_pos.x = WIDTH - ball_radius
+            ball_vel.x = -ball_vel.x * friction
+        # Top/Bottom wall
+        if ball_pos.y - ball_radius < 0:
+            ball_pos.y = ball_radius
+            ball_vel.y = -ball_vel.y * friction
+        if ball_pos.y + ball_radius > HEIGHT:
+            ball_pos.y = HEIGHT - ball_radius
+            ball_vel.y = -ball_vel.y * friction
 
-    # Draw ball
-    pygame.draw.circle(screen, RED, (int(ball_pos[0]), int(ball_pos[1])),
-                       ball_radius)
+        # ----- Drawing -----
+        screen.fill(BLACK)
 
-    pygame.display.flip()
+        # Draw hexagon
+        pygame.draw.polygon(screen, HEXAGON_COLOR, [v.xy for v in vertices], 3)
 
-pygame.quit()
-sys.exit()
+        # Draw ball
+        pygame.draw.circle(screen, BALL_COLOR, (int(ball_pos.x), int(ball_pos.y)),
+                           ball_radius)
+
+        pygame.display.flip()
+
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    main()

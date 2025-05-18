@@ -1,170 +1,176 @@
 import math
 import pygame
-import sys
 
-# Initialize Pygame.
-pygame.init()
+# ----- Configuration Constants -----
+WIDTH, HEIGHT = 800, 600         # Window dimensions
+FPS = 60                         # Frames per second
 
-# Screen settings.
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("ChatGPT o3 mini (high) (28/02/2025)")
+GRAVITY = 500                    # Acceleration due to gravity (pixels/s^2)
+FRICTION = 0.99                  # Damping factor for ball velocity (air friction)
 
-# Colors.
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-RED = (255, 0, 0)
+BALL_RADIUS = 10                 # Radius of the ball (pixels)
+BALL_RESTITUTION = 0.9           # Bounce coefficient (1 = elastic bounce)
 
-# Physics parameters.
-GRAVITY = 500.0  # pixels/s^2 downward
-RESTITUTION = 0.9  # bounce energy retention for the normal component
-TANGENT_FRICTION = 0.98  # friction on the tangential component at impact
-AIR_FRICTION = 0.999  # continuous (air) friction
+# Hexagon parameters
+HEX_CENTER = pygame.math.Vector2(WIDTH / 2, HEIGHT / 2)
+HEX_RADIUS = 250                 # Distance from center to vertex
+HEX_ANGULAR_SPEED = 0.5          # Angular speed in radians per second
 
-# Hexagon parameters.
-HEX_CENTER = (SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
-HEX_RADIUS = 250
-hex_rotation = 0.0  # current rotation angle in radians
-angular_velocity = math.radians(30)  # hexagon rotates at 30° per second
+# ----- Helper Functions -----
 
-# Ball parameters.
-ball = {
-    "pos": [HEX_CENTER[0], HEX_CENTER[1] - 100],
-    "vel": [200.0, 0.0],
-    "radius": 15,
-}
-
-clock = pygame.time.Clock()
-
-
-def get_hexagon_vertices(cx, cy, radius, rotation):
+def get_hexagon_vertices(center, radius, angle):
     """
-    Compute the vertices of a regular hexagon with center (cx,cy),
-    given radius (distance from center to vertex), and rotated by 'rotation'
-    radians.
+    Compute the six vertices of a regular hexagon centered at `center`
+    with circumradius `radius`. The hexagon is rotated by the given `angle`
+    (in radians).
     """
     vertices = []
     for i in range(6):
-        angle = rotation + math.radians(60 * i)
-        x = cx + radius * math.cos(angle)
-        y = cy + radius * math.sin(angle)
-        vertices.append((x, y))
+        theta = angle + i * (2 * math.pi / 6)
+        x = center.x + radius * math.cos(theta)
+        y = center.y + radius * math.sin(theta)
+        vertices.append(pygame.math.Vector2(x, y))
     return vertices
 
 
-def closest_point_on_segment(p, a, b):
+def reflect_ball(ball_velocity, wall_velocity, n):
     """
-    Given point p and line segment ab, return the closest point on the segment.
-    p, a, and b are each 2-tuples (x, y).
+    Reflect the ball’s velocity off a wall.
+    
+    The wall is moving with velocity `wall_velocity`. Let
+    \(\vec{v}_{\text{rel}} = \vec{v}_{\text{ball}} - \vec{v}_{\text{wall}}\).
+    Decompose this relative velocity into tangent and normal components,
+    and reflect the normal one with restitution \(e\):
+    
+        v_new_rel = v_rel_tan - e * v_rel_n
+    
+    Then return:
+    
+        v_ball_new = wall_velocity + v_new_rel
     """
-    (px, py) = p
-    (ax, ay) = a
-    (bx, by) = b
-    dx = bx - ax
-    dy = by - ay
-    if dx == 0 and dy == 0:
-        return a
-    t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)
-    t = max(0, min(1, t))
-    return (ax + t * dx, ay + t * dy)
+    rel = ball_velocity - wall_velocity
+    # Normal component: (v_rel dot n)*n
+    v_rel_n = rel.dot(n) * n
+    # Tangential component: v_rel - v_rel_n
+    v_rel_t = rel - v_rel_n
+    # Reflect the normal component (note the minus sign) and apply restitution
+    new_rel = v_rel_t - BALL_RESTITUTION * v_rel_n
+    return wall_velocity + new_rel
 
 
-running = True
-while running:
-    dt = clock.tick(60) / 1000.0  # delta time in seconds (target 60 FPS)
-
-    # Event handling.
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-
-    # Update the hexagon's rotation.
-    hex_rotation += angular_velocity * dt
-
-    # Update the ball's velocity (gravity) and position.
-    ball["vel"][1] += GRAVITY * dt
-    ball["pos"][0] += ball["vel"][0] * dt
-    ball["pos"][1] += ball["vel"][1] * dt
-
-    # Optionally apply air friction.
-    ball["vel"][0] *= AIR_FRICTION
-    ball["vel"][1] *= AIR_FRICTION
-
-    # Compute hexagon vertices (with updated rotation).
-    vertices = get_hexagon_vertices(
-        HEX_CENTER[0], HEX_CENTER[1], HEX_RADIUS, hex_rotation
-    )
-
-    # Check for collisions against each edge of the hexagon.
-    for i in range(len(vertices)):
-        p1 = vertices[i]
-        p2 = vertices[(i + 1) % len(vertices)]
-        # Find the closest point on the edge segment to the ball center.
-        cp = closest_point_on_segment(ball["pos"], p1, p2)
-        dx = ball["pos"][0] - cp[0]
-        dy = ball["pos"][1] - cp[1]
-        dist = math.hypot(dx, dy)
-
-        if dist < ball["radius"]:
-            # Avoid division by zero.
-            if dist == 0:
-                dist = 0.01
-            penetration = ball["radius"] - dist
-            # Collision normal: from the contact point toward the ball center.
-            normal = (dx / dist, dy / dist)
-            # Push the ball out so that it is just touching the wall.
-            ball["pos"][0] += normal[0] * penetration
-            ball["pos"][1] += normal[1] * penetration
+def check_collision(ball_pos, ball_vel, ball_radius, hex_vertices,
+                    hex_center, hex_angular_speed):
+    """
+    Check collision of the ball (a circle) with each edge of the hexagon.
+    For each edge (or vertex) we compute the closest point to the ball center.
+    If the distance is less than the ball's radius the ball is repositioned
+    and its velocity is updated. The wall's local velocity is computed from
+    the hexagon's angular speed.
+    """
+    for i in range(len(hex_vertices)):
+        A = hex_vertices[i]
+        B = hex_vertices[(i + 1) % len(hex_vertices)]
+        AB = B - A
+        # Vector from A to ball center
+        AC = ball_pos - A
+        # Projection factor: t = (AC . AB) / |AB|^2, clamped to [0, 1]
+        if AB.length_squared() != 0:
+            t = AC.dot(AB) / AB.length_squared()
+        else:
+            t = 0
+        t = max(0, min(1, t))
+        # Find the closest point on the line segment AB
+        closest = A + t * AB
+        # Compute the distance from the ball center to the closest point
+        diff = ball_pos - closest
+        dist = diff.length()
+        if dist < ball_radius:
+            # A collision has occurred!
+            # Compute collision normal. If diff is nearly zero, choose a fallback.
+            if diff.length() == 0:
+                midpoint = (A + B) * 0.5
+                diff = ball_pos - midpoint
+                if diff.length() == 0:
+                    diff = pygame.math.Vector2(1, 0)
+                else:
+                    diff = diff.normalize()
+            else:
+                diff = diff.normalize()
+            n = diff  # collision normal (points from wall toward ball)
+            penetration = ball_radius - dist
+            # Correct the ball's position so it is not overlapping.
+            ball_pos += n * penetration
 
             # Compute the wall's velocity at the contact point.
-            # For a rotating hexagon around HEX_CENTER, the velocity is given by
-            # v = ω × r, which in 2D is: v = (-ω*(py-cy), ω*(px-cx)).
-            v_wall = (
-                -angular_velocity * (cp[1] - HEX_CENTER[1]),
-                angular_velocity * (cp[0] - HEX_CENTER[0]),
-            )
+            # For a rotating hexagon about its center, any point's velocity is:
+            # v_wall = ω × (contact_point - hex_center),
+            # which in 2D is given by:
+            wall_vel = pygame.math.Vector2(-hex_angular_speed * (closest.y - hex_center.y),
+                                             hex_angular_speed * (closest.x - hex_center.x))
+            # Only reflect if the ball is moving toward the wall.
+            rel_vel = ball_vel - wall_vel
+            if rel_vel.dot(n) < 0:
+                ball_vel = reflect_ball(ball_vel, wall_vel, n)
+    return ball_pos, ball_vel
 
-            # Compute ball velocity relative to the wall.
-            v_rel = (
-                ball["vel"][0] - v_wall[0],
-                ball["vel"][1] - v_wall[1],
-            )
 
-            # Decompose relative velocity into components normal and tangential
-            # to the collision.
-            v_rel_norm = v_rel[0] * normal[0] + v_rel[1] * normal[1]
-            v_rel_norm_vec = (v_rel_norm * normal[0], v_rel_norm * normal[1])
-            v_rel_tan = (
-                v_rel[0] - v_rel_norm_vec[0],
-                v_rel[1] - v_rel_norm_vec[1],
-            )
+# ----- Main Function -----
 
-            # Reflect the normal component (with energy loss) and apply friction
-            # to the tangential component.
-            new_v_rel_norm = -RESTITUTION * v_rel_norm
-            new_v_rel_tan = (TANGENT_FRICTION * v_rel_tan[0],
-                             TANGENT_FRICTION * v_rel_tan[1])
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Bouncing Ball in a Spinning Hexagon")
+    clock = pygame.time.Clock()
 
-            # The new relative velocity is the sum of the components.
-            new_v_rel = (new_v_rel_norm * normal[0] + new_v_rel_tan[0],
-                         new_v_rel_norm * normal[1] + new_v_rel_tan[1])
-            # Set the ball's new velocity in the absolute frame.
-            ball["vel"][0] = v_wall[0] + new_v_rel[0]
-            ball["vel"][1] = v_wall[1] + new_v_rel[1]
+    # Start with the ball at the center and a small initial velocity.
+    ball_pos = pygame.math.Vector2(HEX_CENTER)
+    ball_vel = pygame.math.Vector2(150, -200)
+    
+    # Initial hexagon rotation angle (in radians)
+    hex_angle = 0.0
 
-    # Drawing.
-    screen.fill(BLACK)
-    # Draw hexagon (outline).
-    pygame.draw.polygon(screen, WHITE, vertices, 3)
-    # Draw ball.
-    pygame.draw.circle(
-        screen,
-        RED,
-        (int(ball["pos"][0]), int(ball["pos"][1])),
-        ball["radius"],
-    )
-    pygame.display.flip()
+    running = True
+    while running:
+        # dt: time elapsed in seconds since the last frame.
+        dt = clock.tick(FPS) / 1000.0
 
-pygame.quit()
-sys.exit()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+        # ----- Update Ball Physics -----
+        # Apply gravity (vertical acceleration)
+        ball_vel.y += GRAVITY * dt
+        # Update the ball's position
+        ball_pos += ball_vel * dt
+        # Apply friction (damping the velocity slightly)
+        ball_vel *= FRICTION
+
+        # ----- Update Hexagon Rotation -----
+        hex_angle += HEX_ANGULAR_SPEED * dt
+        hex_vertices = get_hexagon_vertices(HEX_CENTER, HEX_RADIUS, hex_angle)
+
+        # ----- Check and Resolve Collisions -----
+        ball_pos, ball_vel = check_collision(
+            ball_pos, ball_vel, BALL_RADIUS, hex_vertices, HEX_CENTER,
+            HEX_ANGULAR_SPEED
+        )
+
+        # ----- Rendering -----
+        screen.fill((30, 30, 30))  # Dark background
+
+        # Draw the hexagon (as a polygon outline)
+        hex_points = [(v.x, v.y) for v in hex_vertices]
+        pygame.draw.polygon(screen, (200, 200, 200), hex_points, 3)
+
+        # Draw the ball
+        pygame.draw.circle(screen, (255, 100, 100),
+                           (int(ball_pos.x), int(ball_pos.y)), BALL_RADIUS)
+
+        pygame.display.flip()
+
+    pygame.quit()
+
+
+if __name__ == "__main__":
+    main()
